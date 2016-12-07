@@ -96,7 +96,7 @@ export default class MNSAdapter {
     return this.getQueueHandler()
       .recvP(waitSeconds)
       .then(mnsMsg => {
-        if (mnsMsg && mnsMsg.hasOwnProperty('Message')) {
+        if (mnsMsg && mnsMsg.Message) {
           return callback(this.generateMQMsg(mnsMsg), done);
         }
         throw new Error('Invalid mns msg object');
