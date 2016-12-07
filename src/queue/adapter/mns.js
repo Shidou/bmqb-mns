@@ -62,29 +62,65 @@ export default class MNSAdapter {
     });
   }
 
+  /**
+   * 每次获取消息后会setTimeout异步调用注册的回调函数
+   * 所以：一个消息到来后，回调还没被执行完就会紧接着消费下调消息
+   */
   popMsg(callback) {
-    return this.getQueueHandler().notifyRecv((err, message) => {
+    return this.getQueueHandler().notifyRecv((err, mnsMsg) => {
       if (err) {
         callback(err);
-      } else {
-        let msgMeta = '';
-        if (message && 'Message' in message) {
-          try {
-            msgMeta = message.Message.MessageBody;
-            msgMeta = jsonpack.unpack(msgMeta);
-            // 设置msg
-            const msg = new MQMsg(msgMeta);
-            msg.setId(message.Message.MessageId);
-            msg.setRawMsg(message.Message);
-            msg.setEnqueueTime(message.Message.EnqueueTime);
-            msg.setNextVisibleTime(message.Message.NextVisibleTime);
-            callback(null, msg);
-          } catch (error) {
-            callback(error);
-          }
+      }
+      if (mnsMsg && 'Message' in mnsMsg) {
+        try {
+          callback(null, this.generateMQMsg(mnsMsg));
+        } catch (error) {
+          callback(error);
         }
       }
     }, 1); // 没有消息时每秒轮询一次
+  }
+
+  /**
+   * 串行取数据
+   * callback {Function} 回调函数
+   * waitSeconds {number} 等待时间
+   */
+  blpopMsg(callback, waitSeconds = 0) {
+    const done = () => {
+      this.finished = true;
+    };
+    if (this.finished) {
+      return true;
+    }
+    return this.getQueueHandler()
+      .recvP(waitSeconds)
+      .then(mnsMsg => {
+        if (mnsMsg && mnsMsg.hasOwnProperty('Message')) {
+          return callback(this.generateMQMsg(mnsMsg), done);
+        }
+        throw new Error('Invalid mns msg object');
+      })
+      .then(() => {
+        this.blpopMsg(callback, waitSeconds);
+      })
+      .catch(err => {
+        if (err && err.Error && err.Error.Code === 'MessageNotExist') {
+          return this.blpopMsg(callback, waitSeconds);
+        }
+        throw err;
+      });
+  }
+
+  generateMQMsg(mnsMsg) {
+    let msgMeta = mnsMsg.Message.MessageBody;
+    msgMeta = jsonpack.unpack(msgMeta);
+    const mqMsg = new MQMsg(msgMeta);
+    mqMsg.setId(mnsMsg.Message.MessageId);
+    mqMsg.setRawMsg(mnsMsg.Message);
+    mqMsg.setEnqueueTime(mnsMsg.Message.EnqueueTime);
+    mqMsg.setNextVisibleTime(mnsMsg.Message.NextVisibleTime);
+    return mqMsg;
   }
 
   /**
