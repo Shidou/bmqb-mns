@@ -87,28 +87,22 @@ export default class MNSAdapter {
    * waitSeconds {number} 等待时间
    */
   blpopMsg(callback, waitSeconds = 0) {
-    const done = () => {
-      this.finished = true;
+    const next = () => {
+      this.blpopMsg(callback, waitSeconds);
     };
-    if (this.finished) {
-      return true;
-    }
     return this.getQueueHandler()
       .recvP(waitSeconds)
       .then(mnsMsg => {
         if (mnsMsg && mnsMsg.Message) {
-          return callback(this.generateMQMsg(mnsMsg), done);
+          return callback(null, this.generateMQMsg(mnsMsg), next);
         }
         throw new Error('Invalid mns msg object');
       })
-      .then(() => {
-        this.blpopMsg(callback, waitSeconds);
-      })
       .catch(err => {
         if (err && err.Error && err.Error.Code === 'MessageNotExist') {
-          return this.blpopMsg(callback, waitSeconds);
+          return next();
         }
-        throw err;
+        return callback(err, null, next);
       });
   }
 

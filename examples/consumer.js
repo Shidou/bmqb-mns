@@ -22,3 +22,24 @@ queueConsumer.popMsg((err, message) => {
   // 确认这个消息，使得消息不会再次可见
   queueConsumer.deleteMsg(message);
 });
+
+
+// 串行接收消息，当前消息回调函数执行完，才会继续消费剩余的消息
+queueConsumer.blpopMsg((err, message, next) => {
+    // message 将是一个MQMsg对象
+    // ...
+    if (err) {
+        console.log(err);
+        return;
+    }
+    try {
+        // 设置消息下次可见时间
+        queueConsumer.setMsgVisibility(message, 10);
+
+        // 确认这个消息，使得消息不会再次可见
+        queueConsumer.deleteMsg(message);
+        next(); // 下一次循环
+    } catch (err) {
+      // ...
+    }
+}, 1); // 当消息为空时，下次请求的等待时间
